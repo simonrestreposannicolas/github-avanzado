@@ -1,0 +1,52 @@
+name: CD
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Incrementar AppVersion en el README
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Push a main (merge): la version ya se incremento en el PR."
+            grep AppVersion README.md
+            exit 0
+          fi
+          RAMA="${{ github.head_ref || github.ref_name }}"
+          ACTUAL=$(grep -oE 'AppVersion-[0-9]+' README.md | head -1 | cut -d- -f2)
+          NUEVA=$((ACTUAL + 1))
+          FECHA=$(TZ=Europe/Madrid date '+%Y-%m-%d %H:%M:%S')
+          sed -i -E "s/^AppVersion-[0-9]+.*/AppVersion-$NUEVA ($FECHA)/" README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "Bump AppVersion-$ACTUAL -> AppVersion-$NUEVA"
+          git push origin HEAD:$RAMA
+          grep AppVersion README.md
+
+  validate-prod:
+    needs: bump-version
+    runs-on: self-hosted
+    steps:
+      - name: Validar PROD_TOKEN contra LOCAL_PROD_TOKEN
+        shell: powershell
+        env:
+          PROD_TOKEN: ${{ secrets.PROD_TOKEN }}
+        run: |
+          if ($env:PROD_TOKEN -eq $env:LOCAL_PROD_TOKEN) {
+            Write-Host "OK: PROD_TOKEN coincide con LOCAL_PROD_TOKEN"
+          } else {
+            Write-Host "ERROR: PROD_TOKEN NO coincide con LOCAL_PROD_TOKEN"
+            exit 1
+          }

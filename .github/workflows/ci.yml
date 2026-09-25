@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Añadir feature al README
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "Push a develop (merge): la linea ya llego con el PR, no se duplica."
+            cat README.md
+            exit 0
+          fi
+          RAMA="${{ github.head_ref || github.ref_name }}"
+          FECHA=$(TZ=Europe/Madrid date '+%Y-%m-%d %H:%M:%S')
+          echo "- Añadida feature: $RAMA ($FECHA)" >> README.md
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "README: añadida feature $RAMA"
+          git push origin HEAD:$RAMA
+          cat README.md
+
+  validate-dev:
+    needs: update-readme
+    runs-on: self-hosted
+    steps:
+      - name: Validar DEV_TOKEN contra LOCAL_DEV_TOKEN
+        shell: powershell
+        env:
+          DEV_TOKEN: ${{ secrets.DEV_TOKEN }}
+        run: |
+          if ($env:DEV_TOKEN -eq $env:LOCAL_DEV_TOKEN) {
+            Write-Host "OK: DEV_TOKEN coincide con LOCAL_DEV_TOKEN"
+          } else {
+            Write-Host "ERROR: DEV_TOKEN NO coincide con LOCAL_DEV_TOKEN"
+            exit 1
+          }
