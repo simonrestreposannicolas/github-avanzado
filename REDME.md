@@ -1,2 +1,0 @@
-
-AppVersion-0
